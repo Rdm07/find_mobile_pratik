@@ -22,7 +22,7 @@ parser.add_argument('--val_ratio', default=0.2, help="Set the percentage of imag
 args = parser.parse_args()
 
 rand_seed = 37
-freq_print = 100							# print stats every {} batches
+freq_print = 104							# print stats every {} batches
 if rand_seed is not None:
 	np.random.seed(rand_seed)
 	torch.manual_seed(rand_seed)
@@ -78,8 +78,31 @@ def distance_loss(outputs, labels):
 		loss = torch.sqrt(torch.sum(sq_diff))
 		return loss
 
-def val_epoch():
-	pass
+def val_epoch(model, val_loader = val_loader):
+	data_loader = val_loader
+	model.eval()
+	
+	running_loss = 0.0
+	running_corrects = 0
+	N_tot = 0
+
+	for ix, data in enumerate(data_loader):
+		inputs, labels = data
+		inputs = Variable(inputs.to(device))
+		labels = torch.FloatTensor(labels).unsqueeze(0).to(device)
+		outputs = model(inputs)
+		loss = distance_loss(outputs, labels)
+
+		N_tot += outputs.size(0)
+		running_loss += loss.item() * inputs.size(0)
+		running_corrects = 0
+		for i in range(len(labels.data)):
+			if outputs[i][0] <= labels.data[i][0] + 0.05 and outputs[i][0] >= labels.data[i][0] - 0.05:
+				if outputs[i][1] <= labels.data[i][1] + 0.05 and outputs[i][1] >= labels.data[i][1] - 0.05:
+					running_corrects += 0
+		running_corrects = torch.tensor(running_corrects)
+	
+	return running_loss / N_tot, running_corrects.item() / N_tot
 
 def train_model(model, criterion, num_epochs = 100, train_loader = train_loader, val_loader = val_loader):
 	best_auc = 0
@@ -106,7 +129,7 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 		print('-' * 50)
 
 		data_loader = train_loader
-		model.train(True)
+		model.train()
 
 		running_loss = 0.0
 		running_corrects = 0
@@ -118,18 +141,19 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 			labels = torch.FloatTensor(labels).unsqueeze(0).to(device)
 			optimizer.zero_grad()
 			outputs = model(inputs)
-			_, preds = torch.max(outputs.data, 1)
 			loss = distance_loss(outputs, labels)
 			loss.backward()
 			optimizer.step()
+			print(labels.data[0][0])
 
 			N_tot += outputs.size(0)
 			running_loss += loss.item() * inputs.size(0)
-			# running_corrects += torch.sum(preds == labels.data)
-			running_corrects = 0 
+			running_corrects = 0
 			for i in range(len(labels.data)):
-				if preds[i] <= labels.data[i] + 0.05 and preds[i] >= labels.data[i] - 0.05:
-					running_corrects += 0
+				if outputs[i][0] <= labels.data[i][0] + 0.05 and outputs[i][0] >= labels.data[i][0] - 0.05:
+					if outputs[i][1] <= labels.data[i][1] + 0.05 and outputs[i][1] >= labels.data[i][1] - 0.05:
+						running_corrects += 0
+			running_corrects = torch.tensor(running_corrects)
 
 			if (ix + 1) % freq_print == 0:
 				print('| Epoch:[{}][{}/{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, ix + 1,
@@ -137,10 +161,13 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 						running_loss / N_tot, running_corrects.item() / N_tot, (time.time() - start)/60.0))
 
 			sys.stdout.flush()
+
+			start = time.time()
+			val_loss, val_acc = val_epoch(model = model, val_loader = val_loader)
+			print("Epoch: {}\tVal_Loss: {:.4f}\tAccuracy: {:.4f}\t{:.3f}mins".format((epoch + 1), val_loss, val_acc, (time.time() - start)/60.0))
 	
 	time_elapsed = time.time() - start_training
-	print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-	print('Best val Acc: {:4f} at epoch: {}'.format(best_auc, best_epoch))
+	print("Training Finished in {:.3f} mins".format(time_elapsed))
 
 def main():
 	sys.setrecursionlimit(10000)
