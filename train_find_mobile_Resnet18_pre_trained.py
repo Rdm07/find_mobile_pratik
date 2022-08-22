@@ -22,7 +22,7 @@ parser.add_argument('--val_ratio', default=0.2, help="Set the percentage of imag
 args = parser.parse_args()
 
 rand_seed = 37
-freq_print = 104							# print stats every {} batches
+freq_print = 103							# print stats every {} batches
 if rand_seed is not None:
 	np.random.seed(rand_seed)
 	torch.manual_seed(rand_seed)
@@ -62,6 +62,8 @@ train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, n
 
 val_set = data_loader(img_vals, transform = data_transforms['val'])
 val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+
+
 
 def auc_roc(Pr, Tr):
 	fpr, tpr, _ = roc_curve(Tr, Pr, pos_label=1.0)
@@ -144,7 +146,6 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 			loss = distance_loss(outputs, labels)
 			loss.backward()
 			optimizer.step()
-			print(labels.data[0][0])
 
 			N_tot += outputs.size(0)
 			running_loss += loss.item() * inputs.size(0)
@@ -155,30 +156,42 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 						running_corrects += 0
 			running_corrects = torch.tensor(running_corrects)
 
-			if (ix + 1) % freq_print == 0:
-				print('| Epoch:[{}][{}/{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, ix + 1,
-						len(data_loader.dataset)//args.batch_size,
-						running_loss / N_tot, running_corrects.item() / N_tot, (time.time() - start)/60.0))
+		print('| Epoch:[{}][{}/{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, ix + 1,
+				len(data_loader.dataset)//args.batch_size,
+				running_loss / N_tot, running_corrects.item() / N_tot, (time.time() - start)/60.0))
 
-			sys.stdout.flush()
+		sys.stdout.flush()
 
-			start = time.time()
-			val_loss, val_acc = val_epoch(model = model, val_loader = val_loader)
-			print("Epoch: {}\tVal_Loss: {:.4f}\tAccuracy: {:.4f}\t{:.3f}mins".format((epoch + 1), val_loss, val_acc, (time.time() - start)/60.0))
+		start = time.time()
+		val_loss, val_acc = val_epoch(model = model, val_loader = val_loader)
+		print("Epoch: {}\tVal_Loss: {:.4f}\tAccuracy: {:.4f}\t{:.3f}mins".format((epoch + 1), val_loss, val_acc, (time.time() - start)/60.0))
+
+		sys.stdout.flush()
 	
 	time_elapsed = time.time() - start_training
 	print("Training Finished in {:.3f} mins".format(time_elapsed))
 
+class my_model(nn.Module):
+	def __init__(self, in_channels):
+		super().__init__()
+		self.layer1 = 
+		
+	def forward(self,x):
+		
+		return x
+
 def main():
 	sys.setrecursionlimit(10000)
 
-	model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+	# model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 	
-	for param in model.parameters():
-		param.requires_grad = False
+	# for param in model.parameters():
+	# 	param.requires_grad = False
 
-	num_in = model.fc.in_features
-	model.fc = nn.Linear(num_in, 2)
+	# num_in = model.fc.in_features
+	# model.fc = nn.Linear(num_in, 2)
+
+	model = my_model(in_channels)
 
 	model = parallelize_model(model)
 	cudnn.benchmark = True
