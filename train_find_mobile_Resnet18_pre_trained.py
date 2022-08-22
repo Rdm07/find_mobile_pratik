@@ -1,6 +1,8 @@
+from cProfile import label
 import os, sys, time
 import argparse
 import random, copy
+from xml.dom.pulldom import START_ELEMENT
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
 from time import strftime
@@ -12,7 +14,7 @@ parser.add_argument('--lr', default=1e-2, type=float, help='learning rate')
 parser.add_argument('--net_type', default='RESNET_18', type=str, help='model')
 parser.add_argument('--trainer', default='adam', type=str, help='optimizer')
 parser.add_argument('--batch_size', default=1, type=int)
-parser.add_argument('--num_workers', default=0, type=int)
+parser.add_argument('--num_workers', default=8, type=int)
 parser.add_argument('--num_epochs', default=20, type=int, help='Number of epochs in training')
 parser.add_argument('--check_after', default=1, type=int, help='check the network after check_after epoch')
 parser.add_argument('--data', type=str, default='none', help="path to the folder containing all subfolders of training/testing data", required=True)
@@ -123,7 +125,11 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 
 			N_tot += outputs.size(0)
 			running_loss += loss.item() * inputs.size(0)
-			running_corrects += torch.sum(preds == labels.data)
+			# running_corrects += torch.sum(preds == labels.data)
+			running_corrects = 0 
+			for i in range(len(labels.data)):
+				if preds[i] <= labels.data[i] + 0.05 and preds[i] >= labels.data[i] - 0.05:
+					running_corrects += 0
 
 			if (ix + 1) % freq_print == 0:
 				print('| Epoch:[{}][{}/{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, ix + 1,
@@ -132,6 +138,7 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 
 			sys.stdout.flush()
 	
+	time_elapsed = time.time() - start_training
 	print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 	print('Best val Acc: {:4f} at epoch: {}'.format(best_auc, best_epoch))
 
