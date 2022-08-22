@@ -63,7 +63,7 @@ train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, n
 val_set = data_loader(img_vals, transform = data_transforms['val'])
 val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
-
+in_channels = 0
 
 def auc_roc(Pr, Tr):
 	fpr, tpr, _ = roc_curve(Tr, Pr, pos_label=1.0)
@@ -174,7 +174,7 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 class my_model(nn.Module):
 	def __init__(self, in_channels):
 		super().__init__()
-		self.layer1 = 
+		self.layer1 = 1
 		
 	def forward(self,x):
 		
