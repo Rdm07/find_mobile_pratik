@@ -5,6 +5,7 @@ import random, copy
 from xml.dom.pulldom import START_ELEMENT
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 from time import strftime
 from sklearn.metrics import mean_squared_error, accuracy_score, hamming_loss, roc_curve, auc, f1_score
 from utility_functions import *
@@ -13,9 +14,9 @@ parser = argparse.ArgumentParser(description='Find Mobile Resnet18 Training')
 parser.add_argument('--lr', default=1e-2, type=float, help='learning rate')
 parser.add_argument('--net_type', default='RESNET_18', type=str, help='model')
 parser.add_argument('--trainer', default='adam', type=str, help='optimizer')
-parser.add_argument('--batch_size', default=1, type=int)
+parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--num_workers', default=8, type=int)
-parser.add_argument('--num_epochs', default=20, type=int, help='Number of epochs in training')
+parser.add_argument('--num_epochs', default=200, type=int, help='Number of epochs in training')
 parser.add_argument('--check_after', default=1, type=int, help='check the network after check_after epoch')
 parser.add_argument('--data', type=str, default='none', help="path to the folder containing all subfolders of training/testing data", required=True)
 parser.add_argument('--val_ratio', default=0.2, help="Set the percentage of image files set aside as validation set", required=False)
@@ -93,20 +94,23 @@ def val_epoch(model, val_loader = val_loader):
 		inputs = Variable(inputs.to(device))
 		labels = torch.FloatTensor(labels).unsqueeze(0).to(device)
 		outputs = model(inputs)
-		loss = distance_loss(outputs, labels)
+		loss = distance_loss(outputs, labels[0])
 
 		N_tot += outputs.size(0)
 		running_loss += loss.item() * inputs.size(0)
 		running_corrects = 0
+
+		# print(outputs.data)
+		# print(labels.data[0])
 		for i in range(len(labels.data)):
-			if outputs[i][0] <= labels.data[i][0] + 0.05 and outputs[i][0] >= labels.data[i][0] - 0.05:
-				if outputs[i][1] <= labels.data[i][1] + 0.05 and outputs[i][1] >= labels.data[i][1] - 0.05:
+			if outputs.data[i][0].item() <= labels.data[0][i][0].item() + 0.05 and outputs.data[i][0].item() >= labels.data[0][i][0].item() - 0.05:
+				if outputs.data[i][1].item() <= labels.data[0][i][1].item() + 0.05 and outputs.data[i][1].item() >= labels.data[0][i][1].item() - 0.05:
 					running_corrects += 0
 		running_corrects = torch.tensor(running_corrects)
 	
 	return running_loss / N_tot, running_corrects.item() / N_tot
 
-def train_model(model, criterion, num_epochs = 100, train_loader = train_loader, val_loader = val_loader):
+def train_model(model, num_epochs = 100, train_loader = train_loader, val_loader = val_loader):
 	best_auc = 0
 	best_epoch = 0
 	start_training = time.time()
@@ -114,11 +118,12 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 	for epoch in range(num_epochs):
 		start = time.time()
 		
-		if epoch < 4: lr = args.lr
-		elif epoch < 8: lr = args.lr/2
-		elif epoch < 10: lr = args.lr/10
-		elif epoch < 15: lr = args.lr / 50
-		else: lr = args.lr/100
+		lr = args.lr
+		# if epoch < 4: lr = args.lr
+		# elif epoch < 8: lr = args.lr/2
+		# elif epoch < 10: lr = args.lr/10
+		# elif epoch < 15: lr = args.lr / 50
+		# else: lr = args.lr/100
 
 		if epoch >= 1:
 			for param in model.parameters():
@@ -139,8 +144,9 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 
 		for ix, data in enumerate(data_loader):
 			inputs, labels = data
-			inputs = Variable(inputs.to(device))
-			labels = torch.FloatTensor(labels).unsqueeze(0).to(device)
+			# print(inputs.size(), labels.shape)
+			inputs = inputs.to(torch.float).to(device)
+			labels = labels.to(torch.long).to(device)
 			optimizer.zero_grad()
 			outputs = model(inputs)
 			loss = distance_loss(outputs, labels)
@@ -151,13 +157,12 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 			running_loss += loss.item() * inputs.size(0)
 			running_corrects = 0
 			for i in range(len(labels.data)):
-				if outputs[i][0] <= labels.data[i][0] + 0.05 and outputs[i][0] >= labels.data[i][0] - 0.05:
-					if outputs[i][1] <= labels.data[i][1] + 0.05 and outputs[i][1] >= labels.data[i][1] - 0.05:
+				if outputs[i][0].item() <= labels.data[i][0].item() + 0.05 and outputs[i][0].item() >= labels.data[i][0].item() - 0.05:
+					if outputs[i][1].item() <= labels.data[i][1].item() + 0.05 and outputs[i][1].item() >= labels.data[i][1].item() - 0.05:
 						running_corrects += 0
 			running_corrects = torch.tensor(running_corrects)
 
-		print('| Epoch:[{}][{}/{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, ix + 1,
-				len(data_loader.dataset)//args.batch_size,
+		print('| Epoch:[{}]\tTrain_Loss: {:.4f}\tAccuracy: {:.4f}\tTime: {:.2f} mins'.format(epoch + 1, 
 				running_loss / N_tot, running_corrects.item() / N_tot, (time.time() - start)/60.0))
 
 		sys.stdout.flush()
@@ -172,26 +177,52 @@ def train_model(model, criterion, num_epochs = 100, train_loader = train_loader,
 	print("Training Finished in {:.3f} mins".format(time_elapsed))
 
 class my_model(nn.Module):
-	def __init__(self, in_channels):
-		super().__init__()
-		self.layer1 = 1
+	def __init__(self, out_size):
+		super(my_model, self).__init__()
+		self.conv1 = nn.Conv2d(in_channels=3, out_channels=12, kernel_size=3, padding=0)
+		self.conv2 = nn.Conv2d(in_channels=12, out_channels=24, kernel_size=6, padding=0)
+		self.conv3 = nn.Conv2d(in_channels=24, out_channels=32, kernel_size=6, padding=0)
+		self.FLATTEN_LEN=32*77*118
+		self.fc1 = nn.Linear(self.FLATTEN_LEN, 300)
+		self.fc2 = nn.Linear(300, out_size)
 		
 	def forward(self,x):
+		# print("input size", x.shape)
+
+		x = self.conv1(x)      
+		x = F.relu(x)
+		# print("after conv1", x.shape)
+
+		x = self.conv2(x)       
+		x = F.relu(x)
+		# print("after conv2", x.shape)
+
+		x = F.max_pool2d(x, kernel_size=2)
+		# print("after 1st maxpool", x.shape)
 		
+		x = self.conv3(x)
+		x = F.relu(x)
+		# print("after conv3", x.shape)
+		
+		x = F.max_pool2d(x, kernel_size=2)
+		# print("after 2nd maxpool", x.shape)
+		
+		x = x.view(-1, self.FLATTEN_LEN)
+		# print("after tensor shape change", x.shape)
+		
+		x = self.fc1(x)
+		x = F.relu(x)
+		# print("after fc1", x.shape)
+
+		x = self.fc2(x)		
+		x = F.log_softmax(x, dim=1)
+
 		return x
 
 def main():
 	sys.setrecursionlimit(10000)
 
-	# model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-	
-	# for param in model.parameters():
-	# 	param.requires_grad = False
-
-	# num_in = model.fc.in_features
-	# model.fc = nn.Linear(num_in, 2)
-
-	model = my_model(in_channels)
+	model = my_model(out_size=2)
 
 	model = parallelize_model(model)
 	cudnn.benchmark = True
@@ -199,8 +230,7 @@ def main():
 	print(model)
 
 	print("Start Training ...")
-	criterion = nn.MSELoss().to(device)
-	train_model(model, criterion, num_epochs=args.num_epochs, train_loader=train_loader, val_loader=val_loader)
+	train_model(model, num_epochs=args.num_epochs, train_loader=train_loader, val_loader=val_loader)
 
 if __name__ == "__main__":
 	main()

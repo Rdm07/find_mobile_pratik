@@ -48,7 +48,7 @@ class data_loader(Dataset):
 	def __getitem__(self, index):
 		img = self.imgs[index]
 		png = Image.open(img[0]).convert('RGB')			# ori: RGB, do not convert to numpy, keep it as PIL image to apply transform
-		lab_dict = [img[1], img[2]]
+		lab_dict = torch.tensor([img[1], img[2]])
 		
 		if self.transform:
 			png = self.transform(png)
